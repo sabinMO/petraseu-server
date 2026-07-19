@@ -1,0 +1,3 @@
+GRAPHHOPPER_API_KEY = "0d49f441-811e-48bb-9555-cb5827d5c1da"
+
+DATABASE_FILE = "database.json"
