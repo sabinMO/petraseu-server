@@ -528,10 +528,11 @@ def update_location():
     code = data.get("group_code", "").upper()
 
     member_name = data.get("member_name", "")
-
+    
     lat = data.get("lat")
-
     lon = data.get("lon")
+    
+    print(f"[UPDATE] {datetime.now().strftime('%H:%M:%S')} {member_name}: {lat}, {lon}")
 
     db = load_database()
 
