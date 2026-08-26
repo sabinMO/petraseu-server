@@ -4,14 +4,18 @@ import uuid
 import string
 import random
 from datetime import datetime
-from database import db
+from database import load_database, save_database
 
 app = Flask(__name__)
 CORS(app)
 
 
 def generate_code():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    db = load_database()
+    while True:
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        if code not in db["groups"]:
+            return code
 
 
 @app.route("/health")
@@ -28,10 +32,8 @@ def create_group():
     if not group_name or not member_name:
         return jsonify({"success": False, "message": "Date incomplete."})
 
+    db = load_database()
     code = generate_code()
-    while code in db["groups"]:
-        code = generate_code()
-
     admin_token = str(uuid.uuid4())
 
     db["groups"][code] = {
@@ -50,6 +52,7 @@ def create_group():
         "created_at": datetime.now().isoformat()
     }
 
+    save_database(db)
     print(f"[CREATE] Group {code} by {member_name}")
 
     return jsonify({
@@ -69,22 +72,24 @@ def join_group():
     if not group_code or not member_name:
         return jsonify({"success": False, "message": "Date incomplete."})
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False, "message": "Grupul nu există."})
 
     group = db["groups"][group_code]
 
-    # Dacă membrul există deja, îl reactivăm în loc să dăm eroare
     if member_name in group["members"]:
         group["members"][member_name]["online"] = True
-        print(f"[REJOIN] {member_name} -> {group_code}")
     else:
         group["members"][member_name] = {
             "lat": None,
             "lon": None,
             "online": True
         }
-        print(f"[JOIN] {member_name} -> {group_code}")
+
+    save_database(db)
+    print(f"[JOIN] {member_name} -> {group_code}")
 
     return jsonify({
         "success": True,
@@ -98,15 +103,18 @@ def leave_group():
     group_code = data.get("group_code", "").strip().upper()
     member_name = data.get("member_name", "").strip()
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False})
 
     group = db["groups"][group_code]
 
     if member_name in group["members"]:
-        # Marcam ca offline dar nu stergem
         group["members"][member_name]["online"] = False
-        print(f"[LEAVE] {member_name} -> {group_code}")
+
+    save_database(db)
+    print(f"[LEAVE] {member_name} -> {group_code}")
 
     return jsonify({"success": True})
 
@@ -117,15 +125,18 @@ def delete_group():
     group_code = data.get("group_code", "").strip().upper()
     admin_token = data.get("admin_token", "").strip()
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False, "message": "Grupul nu există."})
 
     group = db["groups"][group_code]
 
-    if group["admin_token"] != admin_token:
+    if group.get("admin_token") != admin_token:
         return jsonify({"success": False, "message": "Nu ești admin."})
 
     del db["groups"][group_code]
+    save_database(db)
     print(f"[DELETE] Group {group_code}")
 
     return jsonify({"success": True})
@@ -134,6 +145,7 @@ def delete_group():
 @app.route("/locations/<group_code>", methods=["GET"])
 def get_locations(group_code):
     group_code = group_code.upper()
+    db = load_database()
 
     if group_code not in db["groups"]:
         return jsonify({"success": False, "message": "Grupul nu există."})
@@ -160,6 +172,8 @@ def update_location(group_code):
     lat = data.get("lat")
     lon = data.get("lon")
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False})
 
@@ -172,6 +186,8 @@ def update_location(group_code):
     group["members"][member_name]["lon"] = lon
     group["members"][member_name]["online"] = True
 
+    save_database(db)
+
     print(f"[UPDATE] {datetime.now().strftime('%H:%M:%S')} "
           f"{member_name}: {lat}, {lon}")
 
@@ -181,6 +197,7 @@ def update_location(group_code):
 @app.route("/chat/<group_code>", methods=["GET"])
 def get_messages(group_code):
     group_code = group_code.upper()
+    db = load_database()
 
     if group_code not in db["groups"]:
         return jsonify({"success": False, "messages": []})
@@ -200,6 +217,8 @@ def send_message(group_code):
     if not text:
         return jsonify({"success": False})
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False})
 
@@ -210,6 +229,7 @@ def send_message(group_code):
     }
 
     db["groups"][group_code]["messages"].append(message)
+    save_database(db)
 
     return jsonify({"success": True})
 
@@ -217,6 +237,7 @@ def send_message(group_code):
 @app.route("/route/<group_code>", methods=["GET"])
 def get_route(group_code):
     group_code = group_code.upper()
+    db = load_database()
 
     if group_code not in db["groups"]:
         return jsonify({"success": False})
@@ -232,10 +253,13 @@ def save_route(group_code):
     data = request.get_json()
     route = data.get("route")
 
+    db = load_database()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False})
 
     db["groups"][group_code]["route"] = route
+    save_database(db)
 
     return jsonify({"success": True})
 
