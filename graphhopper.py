@@ -69,61 +69,31 @@ def search_places(text, limit=10):
 
 
 def build_route(points):
-
     try:
-
         params = []
-
         for point in points:
-
             params.append(
-
                 ("point", f"{point['lat']},{point['lon']}")
-
             )
-
         params.extend([
-
             ("profile", "hike"),
             ("locale", "ro"),
             ("points_encoded", "false"),
             ("instructions", "true"),
             ("calc_points", "true"),
             ("key", GRAPHHOPPER_API_KEY)
-
         ])
-
         response = requests.get(
-
             ROUTE_URL,
-
             params=params,
-
             timeout=30
-
         )
-
         data = response.json()
-
         if "paths" not in data:
-
+            print("GRAPHHOPPER ERROR:", data)
             return None
-
         path = data["paths"][0]
-
-        return {
-
-            "distance": path["distance"],
-            "time": path["time"],
-            "ascend": path.get("ascend", 0),
-            "descend": path.get("descend", 0),
-            "points": path["points"]["coordinates"],
-            "instructions": path["instructions"]
-
-        }
-
+        return path
     except Exception as e:
-
         print(e)
-
         return None
