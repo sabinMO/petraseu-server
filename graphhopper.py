@@ -76,7 +76,7 @@ def build_route(points):
                 ("point", f"{point['lat']},{point['lon']}")
             )
         params.extend([
-            ("profile", "hike"),
+            ("profile", "foot"),
             ("locale", "ro"),
             ("points_encoded", "false"),
             ("instructions", "true"),
