@@ -5,7 +5,9 @@ import string
 import random
 from datetime import datetime
 from database import load_database, save_database
-from graphhopper import search_places, build_route
+from graphhopper import build_route
+from graphhopper import search_places as graphhopper_search
+from osm_search import search_place as osm_search
 
 app = Flask(__name__)
 CORS(app)
@@ -29,8 +31,24 @@ def places_search():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"success": False, "results": []})
-    results = search_places(query)
-    return jsonify({"success": True, "results": results})
+    
+    # Încearcă OSM index local mai întâi (gări, cabane, vârfuri)
+    rezultate_osm = osm_search(query)
+    
+    # Completează cu GraphHopper pentru orașe și adrese
+    rezultate_gh = graphhopper_search(query)
+    
+    # Combină — OSM primul, GraphHopper după
+    vazute = set()
+    finale = []
+    
+    for r in rezultate_osm + rezultate_gh:
+        cheie = (round(r["lat"], 3), round(r["lon"], 3))
+        if cheie not in vazute:
+            vazute.add(cheie)
+            finale.append(r)
+    
+    return jsonify({"success": True, "results": finale[:10]})
 
 
 @app.route("/route/build", methods=["POST"])
