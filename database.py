@@ -1,6 +1,9 @@
 import requests
 import json
-from config import GITHUB_TOKEN, GIST_ID
+import os
+
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GIST_ID = os.environ.get("GIST_ID", "")
 
 HEADERS = {
     "Authorization": f"token {GITHUB_TOKEN}",
@@ -14,7 +17,6 @@ def load_database():
     try:
         r = requests.get(URL, headers=HEADERS, timeout=15)
         data = r.json()
-        print(f"Gist response keys: {list(data.keys())}")
         files = data.get("files", {})
         file_data = files.get("petraseu_db.json", {})
         content = file_data.get("content", '{"groups": {}}')
@@ -35,7 +37,7 @@ def save_database(data):
             json={"files": {"petraseu_db.json": {"content": json.dumps(data)}}},
             timeout=15
         )
-        print(f"save_database status: {r.status_code}")
+        print(f"save status: {r.status_code}")
     except Exception as e:
         print(f"save_database error: {e}")
 
