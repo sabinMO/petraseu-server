@@ -1,19 +1,21 @@
 import requests
-from config import JSONBIN_API_KEY, JSONBIN_BIN_ID
+from config import GITHUB_TOKEN, GIST_ID
 
 HEADERS = {
-    "X-Master-Key": JSONBIN_API_KEY,
-    "Content-Type": "application/json"
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
 }
 
-URL = f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN_ID}"
+URL = f"https://api.github.com/gists/{GIST_ID}"
 
 
 def load_database():
     try:
         r = requests.get(URL, headers=HEADERS, timeout=10)
         data = r.json()
-        db = data.get("record", {})
+        content = data["files"]["petraseu_db.json"]["content"]
+        import json
+        db = json.loads(content)
         if "groups" not in db:
             db["groups"] = {}
         return db
@@ -24,7 +26,13 @@ def load_database():
 
 def save_database(data):
     try:
-        requests.put(URL, json=data, headers=HEADERS, timeout=10)
+        import json
+        requests.patch(
+            URL,
+            headers=HEADERS,
+            json={"files": {"petraseu_db.json": {"content": json.dumps(data)}}},
+            timeout=10
+        )
     except Exception as e:
         print(f"save_database error: {e}")
 
