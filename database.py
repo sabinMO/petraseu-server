@@ -1,4 +1,5 @@
 import requests
+import json
 from config import GITHUB_TOKEN, GIST_ID
 
 HEADERS = {
@@ -11,10 +12,12 @@ URL = f"https://api.github.com/gists/{GIST_ID}"
 
 def load_database():
     try:
-        r = requests.get(URL, headers=HEADERS, timeout=10)
+        r = requests.get(URL, headers=HEADERS, timeout=15)
         data = r.json()
-        content = data["files"]["petraseu_db.json"]["content"]
-        import json
+        print(f"Gist response keys: {list(data.keys())}")
+        files = data.get("files", {})
+        file_data = files.get("petraseu_db.json", {})
+        content = file_data.get("content", '{"groups": {}}')
         db = json.loads(content)
         if "groups" not in db:
             db["groups"] = {}
@@ -26,13 +29,13 @@ def load_database():
 
 def save_database(data):
     try:
-        import json
-        requests.patch(
+        r = requests.patch(
             URL,
             headers=HEADERS,
             json={"files": {"petraseu_db.json": {"content": json.dumps(data)}}},
-            timeout=10
+            timeout=15
         )
+        print(f"save_database status: {r.status_code}")
     except Exception as e:
         print(f"save_database error: {e}")
 
