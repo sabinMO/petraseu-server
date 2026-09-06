@@ -1,4 +1,2 @@
-GRAPHHOPPER_API_KEY = "975bee53-29a4-4d5e-a74c-f98658990b35"
-GITHUB_TOKEN = "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"
-GIST_ID = "d3f55e3c956adbca38dd0b8ed0cb4a8b"
+GRAPHHOPPER_API_KEY = "cheia_ta_graphhopper"
 DATABASE_FILE = "database.json"
