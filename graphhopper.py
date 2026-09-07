@@ -1,24 +1,35 @@
 import requests
 
-from config import GRAPHHOPPER_API_KEY, OPENROUTESERVICE_API_KEY
+from config import GRAPHHOPPER_API_KEY
 
 
 # ---------------------------------------------------------
-# GraphHopper - doar pentru căutarea locurilor
+# GraphHopper - cautare locuri
 # ---------------------------------------------------------
 
 GEOCODE_URL = "https://graphhopper.com/api/1/geocode"
 
 
 # ---------------------------------------------------------
-# OpenRouteService / HeiGIT - trasee montane
+# OpenRouteService - trasee
 # ---------------------------------------------------------
 
-ROUTE_URL = (
-    "https://api.heigit.org/"
-    "openrouteservice/v2/directions/foot-hiking"
+ORS_ROUTE_URL = (
+    "https://api.heigit.org/openrouteservice/v2/"
+    "directions/foot-hiking"
 )
 
+# Cheia OpenRouteService
+ORS_API_KEY = (
+    "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6"
+    "Ijc3YmU1MTlmNTliNjQyZWE4OTFkNzA2Nzg1OGU5OTM4IiwiaCI6"
+    "bXVybXVyYzQifQ=="
+)
+
+
+# ---------------------------------------------------------
+# Cautare locuri
+# ---------------------------------------------------------
 
 def search_places(text, limit=10):
 
@@ -58,31 +69,153 @@ def search_places(text, limit=10):
 
             point = hit.get("point", {})
 
+            lat = point.get("lat")
+            lon = point.get("lng")
+
+            if lat is None or lon is None:
+                continue
+
             results.append({
                 "name": label,
-                "lat": point.get("lat"),
-                "lon": point.get("lng")
+                "lat": lat,
+                "lon": lon
             })
+
+        print(
+            f"[GEOCODE] Found {len(results)} places "
+            f"for '{text}'"
+        )
 
         return results
 
     except Exception as e:
 
-        print("GEOCODING ERROR:", e)
+        print(f"[GEOCODE ERROR] {e}")
 
         return []
 
 
-def build_route(points):
+# ---------------------------------------------------------
+# Decodare Google/ORS Encoded Polyline
+# ---------------------------------------------------------
+
+def decode_polyline(encoded):
+
+    """
+    Decodeaza geometria encoded polyline primita de
+    OpenRouteService.
+
+    Returneaza lista:
+        [
+            [lon, lat],
+            [lon, lat],
+            ...
+        ]
+    """
+
+    coordinates = []
+
+    index = 0
+    lat = 0
+    lon = 0
+
+    length = len(encoded)
 
     try:
 
-        if len(points) < 2:
-            print("ROUTE ERROR: minimum 2 points required")
-            return None
+        while index < length:
 
-        # ORS așteaptă coordonatele în ordinea:
+            # -------------------------
+            # Latitude
+            # -------------------------
+
+            shift = 0
+            result = 0
+
+            while True:
+
+                byte = ord(encoded[index]) - 63
+                index += 1
+
+                result |= (byte & 0x1F) << shift
+                shift += 5
+
+                if byte < 0x20:
+                    break
+
+            if result & 1:
+                lat_change = ~(result >> 1)
+            else:
+                lat_change = result >> 1
+
+            lat += lat_change
+
+            # -------------------------
+            # Longitude
+            # -------------------------
+
+            shift = 0
+            result = 0
+
+            while True:
+
+                byte = ord(encoded[index]) - 63
+                index += 1
+
+                result |= (byte & 0x1F) << shift
+                shift += 5
+
+                if byte < 0x20:
+                    break
+
+            if result & 1:
+                lon_change = ~(result >> 1)
+            else:
+                lon_change = result >> 1
+
+            lon += lon_change
+
+            coordinates.append([
+                lon / 100000.0,
+                lat / 100000.0
+            ])
+
+        return coordinates
+
+    except Exception as e:
+
+        print(f"[POLYLINE ERROR] {e}")
+
+        return []
+
+
+# ---------------------------------------------------------
+# Construire traseu montan
+# ---------------------------------------------------------
+
+def build_route(points):
+
+    if not points or len(points) < 2:
+
+        print(
+            "[ROUTE] Need at least 2 points."
+        )
+
+        return None
+
+    try:
+
+        print(
+            "[ROUTE] Requesting hiking route "
+            "from OpenRouteService..."
+        )
+
+        # -------------------------------------------------
+        # ORS foloseste ordinea:
+        #
         # [longitude, latitude]
+        # -------------------------------------------------
+
         coordinates = []
 
         for point in points:
@@ -91,150 +224,186 @@ def build_route(points):
             lon = point.get("lon")
 
             if lat is None or lon is None:
-                continue
+
+                print(
+                    "[ROUTE] Invalid point:",
+                    point
+                )
+
+                return None
 
             coordinates.append([
-                lon,
-                lat
+                float(lon),
+                float(lat)
             ])
 
-        if len(coordinates) < 2:
-            print("ROUTE ERROR: not enough valid coordinates")
-            return None
+        # -------------------------------------------------
+        # Payload ORS
+        #
+        # IMPORTANT:
+        # NU folosim geometry_format.
+        # API-ul actual nu il accepta.
+        # -------------------------------------------------
 
         payload = {
             "coordinates": coordinates,
-
-            "instructions": True,
-
-            "instructions_format": "text",
-
             "language": "ro",
-
-            "geometry": True
+            "geometry": True,
+            "instructions": True,
+            "instructions_format": "text"
         }
 
         headers = {
-            "Authorization": OPENROUTESERVICE_API_KEY,
+            "Authorization": ORS_API_KEY,
             "Content-Type": "application/json"
         }
 
-        print(
-            "[ROUTE] Requesting hiking route from "
-            "OpenRouteService..."
-        )
-
         response = requests.post(
-            ROUTE_URL,
+            ORS_ROUTE_URL,
             json=payload,
             headers=headers,
             timeout=60
         )
 
         print(
-            "[ROUTE] ORS status:",
-            response.status_code
+            f"[ROUTE] ORS status: "
+            f"{response.status_code}"
         )
 
-        response.raise_for_status()
+        # -------------------------------------------------
+        # Afisam raspunsul daca API-ul da eroare
+        # -------------------------------------------------
+
+        if response.status_code != 200:
+
+            print(
+                "[ROUTE] HTTP ERROR:",
+                response.text
+            )
+
+            return None
 
         data = response.json()
 
-        if "features" not in data or not data["features"]:
+        # -------------------------------------------------
+        # Verificam daca ORS a returnat traseu
+        # -------------------------------------------------
+
+        routes = data.get("routes")
+
+        if not routes:
 
             print(
-                "[ROUTE] ORS returned no route:",
+                "[ROUTE] ORS returned no routes:",
                 data
             )
 
             return None
 
-        feature = data["features"][0]
+        route = routes[0]
 
-        geometry = feature.get("geometry", {})
+        # -------------------------------------------------
+        # Geometria traseului
+        # -------------------------------------------------
 
-        route_coordinates = geometry.get(
-            "coordinates",
-            []
-        )
+        encoded_geometry = route.get("geometry")
 
-        if not route_coordinates:
+        if not encoded_geometry:
 
             print(
-                "[ROUTE] Route contains no coordinates."
+                "[ROUTE] ORS route has no geometry."
             )
 
             return None
 
         # -------------------------------------------------
-        # Convertim răspunsul ORS într-un format apropiat
-        # de cel pe care îl folosea aplicația ta.
-        #
-        # ORS:
-        # [lon, lat]
-        #
-        # Aplicația ta folosește:
-        # {"coordinates": [[lon, lat], ...]}
+        # Decodam polyline
         # -------------------------------------------------
 
-        summary = feature.get(
-            "properties",
-            {}
-        ).get(
-            "summary",
-            {}
+        coordinates_decoded = decode_polyline(
+            encoded_geometry
         )
 
-        distance = summary.get(
-            "distance",
-            0
+        if not coordinates_decoded:
+
+            print(
+                "[ROUTE] Could not decode route geometry."
+            )
+
+            return None
+
+        print(
+            f"[ROUTE] Route generated successfully. "
+            f"Distance: "
+            f"{route.get('summary', {}).get('distance', 0) / 1000:.2f} km"
         )
 
-        duration = summary.get(
-            "duration",
-            0
+        print(
+            f"[ROUTE] Geometry points: "
+            f"{len(coordinates_decoded)}"
         )
 
-        return {
+        # -------------------------------------------------
+        # Construim raspunsul compatibil cu aplicatia ta
+        #
+        # map.py asteapta:
+        #
+        # route["points"]["coordinates"]
+        #
+        # iar coordonatele sunt:
+        #
+        # [longitude, latitude]
+        # -------------------------------------------------
+
+        result = {
             "points": {
-                "coordinates": route_coordinates
+                "coordinates": coordinates_decoded
             },
 
-            "distance": distance,
-
-            "time": duration,
-
-            "instructions": feature.get(
-                "properties",
-                {}
+            "distance": route.get(
+                "summary", {}
             ).get(
+                "distance"
+            ),
+
+            "time": route.get(
+                "summary", {}
+            ).get(
+                "duration"
+            ),
+
+            "segments": route.get(
                 "segments",
                 []
             )
         }
 
-    except requests.exceptions.HTTPError as e:
-
         print(
-            "[ROUTE] HTTP ERROR:",
-            e
+            "[ROUTE] Returning route to application."
         )
 
-        try:
-            print(
-                "[ROUTE] Server response:",
-                response.text
-            )
-        except Exception:
-            pass
+        return result
+
+    except requests.exceptions.Timeout:
+
+        print(
+            "[ROUTE] OpenRouteService timeout."
+        )
+
+        return None
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            f"[ROUTE] HTTP request error: {e}"
+        )
 
         return None
 
     except Exception as e:
 
         print(
-            "[ROUTE] ERROR:",
-            e
+            f"[ROUTE] Unexpected error: {e}"
         )
 
         return None
