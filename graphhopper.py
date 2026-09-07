@@ -111,9 +111,7 @@ def build_route(points):
 
             "language": "ro",
 
-            "geometry": True,
-
-            "geometry_format": "geojson"
+            "geometry": True
         }
 
         headers = {
