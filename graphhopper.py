@@ -1,3 +1,4 @@
+import os
 import requests
 
 from config import GRAPHHOPPER_API_KEY
@@ -20,11 +21,7 @@ ORS_ROUTE_URL = (
 )
 
 # Cheia OpenRouteService
-ORS_API_KEY = (
-    "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6"
-    "Ijc3YmU1MTlmNTliNjQyZWE4OTFkNzA2Nzg1OGU5OTM4IiwiaCI6"
-    "bXVybXVyYzQifQ=="
-)
+ORS_API_KEY = os.getenv("ORS_API_KEY")
 
 
 # ---------------------------------------------------------
