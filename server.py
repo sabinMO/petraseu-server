@@ -3,7 +3,7 @@ from flask_cors import CORS
 import uuid
 import string
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import load_database, save_database
 from graphhopper import build_route
 from graphhopper import search_places as graphhopper_search
@@ -21,6 +21,29 @@ def generate_code():
             return code
 
 
+def cleanup_old_groups():
+    db = load_database()
+    now = datetime.now()
+    to_delete = []
+
+    for code, group in db["groups"].items():
+        last = group.get("last_active") or group.get("created_at")
+        if last:
+            try:
+                last_dt = datetime.fromisoformat(last)
+                if now - last_dt > timedelta(hours=12):
+                    to_delete.append(code)
+            except Exception:
+                pass
+
+    for code in to_delete:
+        del db["groups"][code]
+        print(f"[CLEANUP] Group {code} deleted after 12h inactivity")
+
+    if to_delete:
+        save_database(db)
+
+
 @app.route("/health")
 def health():
     return jsonify({"status": "ok"})
@@ -31,23 +54,19 @@ def places_search():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"success": False, "results": []})
-    
-    # Încearcă OSM index local mai întâi (gări, cabane, vârfuri)
+
     rezultate_osm = osm_search(query)
-    
-    # Completează cu GraphHopper pentru orașe și adrese
     rezultate_gh = graphhopper_search(query)
-    
-    # Combină — OSM primul, GraphHopper după
+
     vazute = set()
     finale = []
-    
+
     for r in rezultate_osm + rezultate_gh:
         cheie = (round(r["lat"], 3), round(r["lon"], 3))
         if cheie not in vazute:
             vazute.add(cheie)
             finale.append(r)
-    
+
     return jsonify({"success": True, "results": finale[:10]})
 
 
@@ -73,6 +92,7 @@ def create_group():
     db = load_database()
     code = generate_code()
     admin_token = str(uuid.uuid4())
+    now = datetime.now().isoformat()
     db["groups"][code] = {
         "name": group_name,
         "admin": member_name,
@@ -82,7 +102,8 @@ def create_group():
         },
         "messages": [],
         "route": None,
-        "created_at": datetime.now().isoformat()
+        "created_at": now,
+        "last_active": now
     }
     save_database(db)
     print(f"[CREATE] Group {code} by {member_name}")
@@ -109,9 +130,21 @@ def join_group():
         group["members"][member_name]["online"] = True
     else:
         group["members"][member_name] = {"lat": None, "lon": None, "online": True}
+
+    group["last_active"] = datetime.now().isoformat()
     save_database(db)
     print(f"[JOIN] {member_name} -> {group_code}")
-    return jsonify({"success": True, "group_name": group["name"]})
+
+    # Returnează admin_token dacă membrul este adminul grupului
+    admin_token = ""
+    if group.get("admin") == member_name:
+        admin_token = group.get("admin_token", "")
+
+    return jsonify({
+        "success": True,
+        "group_name": group["name"],
+        "admin_token": admin_token
+    })
 
 
 @app.route("/groups/leave", methods=["POST"])
@@ -173,6 +206,10 @@ def update_location(group_code):
     lat = data.get("lat")
     lon = data.get("lon")
     db = load_database()
+
+    # Cleanup grupuri inactive la fiecare update de locatie
+    cleanup_old_groups()
+
     if group_code not in db["groups"]:
         return jsonify({"success": False})
     group = db["groups"][group_code]
@@ -181,6 +218,7 @@ def update_location(group_code):
     group["members"][member_name]["lat"] = lat
     group["members"][member_name]["lon"] = lon
     group["members"][member_name]["online"] = True
+    group["last_active"] = datetime.now().isoformat()
     save_database(db)
     print(f"[UPDATE] {datetime.now().strftime('%H:%M:%S')} {member_name}: {lat}, {lon}")
     return jsonify({"success": True})
