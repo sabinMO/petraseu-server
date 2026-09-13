@@ -135,7 +135,6 @@ def join_group():
     save_database(db)
     print(f"[JOIN] {member_name} -> {group_code}")
 
-    # Returnează admin_token dacă membrul este adminul grupului
     admin_token = ""
     if group.get("admin") == member_name:
         admin_token = group.get("admin_token", "")
@@ -156,8 +155,9 @@ def leave_group():
     if group_code not in db["groups"]:
         return jsonify({"success": False})
     group = db["groups"][group_code]
+    # Sterge membrul complet din grup
     if member_name in group["members"]:
-        group["members"][member_name]["online"] = False
+        del group["members"][member_name]
     save_database(db)
     print(f"[LEAVE] {member_name} -> {group_code}")
     return jsonify({"success": True})
@@ -207,7 +207,6 @@ def update_location(group_code):
     lon = data.get("lon")
     db = load_database()
 
-    # Cleanup grupuri inactive la fiecare update de locatie
     cleanup_old_groups()
 
     if group_code not in db["groups"]:
