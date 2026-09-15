@@ -22,23 +22,25 @@ def generate_code():
 
 
 def cleanup_old_groups():
+    """Sterge grupurile mai vechi de 12 ore indiferent de stare."""
     db = load_database()
     now = datetime.now()
     to_delete = []
 
     for code, group in db["groups"].items():
-        last = group.get("last_active") or group.get("created_at")
-        if last:
+        # Foloseste created_at — grupul se sterge la 12h de la creare
+        created = group.get("created_at")
+        if created:
             try:
-                last_dt = datetime.fromisoformat(last)
-                if now - last_dt > timedelta(hours=12):
+                created_dt = datetime.fromisoformat(created)
+                if now - created_dt > timedelta(hours=12):
                     to_delete.append(code)
             except Exception:
                 pass
 
     for code in to_delete:
         del db["groups"][code]
-        print(f"[CLEANUP] Group {code} deleted after 12h inactivity")
+        print(f"[CLEANUP] Group {code} deleted after 12h")
 
     if to_delete:
         save_database(db)
@@ -46,6 +48,9 @@ def cleanup_old_groups():
 
 @app.route("/health")
 def health():
+    # Cleanup la fiecare health check —
+    # Render face health check periodic
+    cleanup_old_groups()
     return jsonify({"status": "ok"})
 
 
@@ -155,7 +160,6 @@ def leave_group():
     if group_code not in db["groups"]:
         return jsonify({"success": False})
     group = db["groups"][group_code]
-    # Sterge membrul complet din grup
     if member_name in group["members"]:
         del group["members"][member_name]
     save_database(db)
@@ -184,6 +188,7 @@ def delete_group():
 def get_locations(group_code):
     group_code = group_code.upper()
     db = load_database()
+    cleanup_old_groups()
     if group_code not in db["groups"]:
         return jsonify({"success": False, "message": "Grupul nu există."})
     group = db["groups"][group_code]
@@ -227,6 +232,7 @@ def update_location(group_code):
 def get_messages(group_code):
     group_code = group_code.upper()
     db = load_database()
+    cleanup_old_groups()
     if group_code not in db["groups"]:
         return jsonify({"success": False, "messages": []})
     messages = db["groups"][group_code]["messages"]
