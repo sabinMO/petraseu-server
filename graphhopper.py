@@ -125,7 +125,7 @@ def decode_polyline(encoded, precision=5):
             lon += (~(result >> 1) if result & 1 else result >> 1)
 
             # ---- altitude (doar daca precision=6) ----
-            if precision == 6 and index < length:
+            if index < length:
                 shift = 0
                 result = 0
 
@@ -230,7 +230,7 @@ def build_route(points):
         # ORS cu elevation=True foloseste precision=6
         coordinates_decoded = decode_polyline(
             encoded_geometry,
-            precision=6
+            precision=5
         )
 
         if not coordinates_decoded:
