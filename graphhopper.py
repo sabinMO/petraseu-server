@@ -3,17 +3,7 @@ import requests
 
 from config import GRAPHHOPPER_API_KEY
 
-
-# ---------------------------------------------------------
-# GraphHopper - cautare locuri
-# ---------------------------------------------------------
-
 GEOCODE_URL = "https://graphhopper.com/api/1/geocode"
-
-
-# ---------------------------------------------------------
-# OpenRouteService - trasee
-# ---------------------------------------------------------
 
 ORS_ROUTE_URL = (
     "https://api.heigit.org/openrouteservice/v2/"
@@ -22,10 +12,6 @@ ORS_ROUTE_URL = (
 
 ORS_API_KEY = os.getenv("ORS_API_KEY")
 
-
-# ---------------------------------------------------------
-# Cautare locuri
-# ---------------------------------------------------------
 
 def search_places(text, limit=10):
 
@@ -77,10 +63,7 @@ def search_places(text, limit=10):
                 "lon": lon
             })
 
-        print(
-            f"[GEOCODE] Found {len(results)} places "
-            f"for '{text}'"
-        )
+        print(f"[GEOCODE] Found {len(results)} places for '{text}'")
 
         return results
 
@@ -91,16 +74,21 @@ def search_places(text, limit=10):
         return []
 
 
-# ---------------------------------------------------------
-# Decodare Google/ORS Encoded Polyline
-# ---------------------------------------------------------
-
-def decode_polyline(encoded):
+def decode_polyline(encoded, precision=5):
+    """
+    Decodeaza encoded polyline.
+    ORS fara elevation foloseste precision=5.
+    ORS cu elevation foloseste precision=6 si
+    returneaza [lon, lat, alt].
+    """
 
     coordinates = []
     index = 0
     lat = 0
     lon = 0
+    alt = 0
+
+    factor = 10 ** precision
 
     length = len(encoded)
 
@@ -108,6 +96,7 @@ def decode_polyline(encoded):
 
         while index < length:
 
+            # ---- latitude ----
             shift = 0
             result = 0
 
@@ -119,13 +108,9 @@ def decode_polyline(encoded):
                 if byte < 0x20:
                     break
 
-            if result & 1:
-                lat_change = ~(result >> 1)
-            else:
-                lat_change = result >> 1
+            lat += (~(result >> 1) if result & 1 else result >> 1)
 
-            lat += lat_change
-
+            # ---- longitude ----
             shift = 0
             result = 0
 
@@ -137,17 +122,33 @@ def decode_polyline(encoded):
                 if byte < 0x20:
                     break
 
-            if result & 1:
-                lon_change = ~(result >> 1)
+            lon += (~(result >> 1) if result & 1 else result >> 1)
+
+            # ---- altitude (doar daca precision=6) ----
+            if precision == 6 and index < length:
+                shift = 0
+                result = 0
+
+                while index < length:
+                    byte = ord(encoded[index]) - 63
+                    index += 1
+                    result |= (byte & 0x1F) << shift
+                    shift += 5
+                    if byte < 0x20:
+                        break
+
+                alt += (~(result >> 1) if result & 1 else result >> 1)
+
+                coordinates.append([
+                    lon / factor,
+                    lat / factor,
+                    alt / 100.0
+                ])
             else:
-                lon_change = result >> 1
-
-            lon += lon_change
-
-            coordinates.append([
-                lon / 100000.0,
-                lat / 100000.0
-            ])
+                coordinates.append([
+                    lon / factor,
+                    lat / factor
+                ])
 
         return coordinates
 
@@ -158,10 +159,6 @@ def decode_polyline(encoded):
         return []
 
 
-# ---------------------------------------------------------
-# Construire traseu montan
-# ---------------------------------------------------------
-
 def build_route(points):
 
     if not points or len(points) < 2:
@@ -170,10 +167,7 @@ def build_route(points):
 
     try:
 
-        print(
-            "[ROUTE] Requesting hiking route "
-            "from OpenRouteService..."
-        )
+        print("[ROUTE] Requesting hiking route from OpenRouteService...")
 
         coordinates = []
 
@@ -186,10 +180,7 @@ def build_route(points):
                 print("[ROUTE] Invalid point:", point)
                 return None
 
-            coordinates.append([
-                float(lon),
-                float(lat)
-            ])
+            coordinates.append([float(lon), float(lat)])
 
         payload = {
             "coordinates": coordinates,
@@ -197,7 +188,6 @@ def build_route(points):
             "geometry": True,
             "instructions": True,
             "instructions_format": "text",
-            # Activeaza elevation pentru urcare/coborare
             "elevation": True
         }
 
@@ -237,7 +227,11 @@ def build_route(points):
             print("[ROUTE] ORS route has no geometry.")
             return None
 
-        coordinates_decoded = decode_polyline(encoded_geometry)
+        # ORS cu elevation=True foloseste precision=6
+        coordinates_decoded = decode_polyline(
+            encoded_geometry,
+            precision=6
+        )
 
         if not coordinates_decoded:
             print("[ROUTE] Could not decode route geometry.")
@@ -245,12 +239,9 @@ def build_route(points):
 
         distance = summary.get("distance", 0)
 
-        # ORS returneaza duration in secunde
-        # il convertim in milisecunde pentru compatibilitate
         duration_sec = summary.get("duration", 0)
         duration_ms = int(duration_sec * 1000)
 
-        # ORS returneaza ascent/descent direct in summary
         ascend = round(summary.get("ascent", 0))
         descend = round(summary.get("descent", 0))
 
